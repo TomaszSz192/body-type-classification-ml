@@ -1,0 +1,188 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from google.colab import drive
+drive.mount('/content/drive')
+
+df=pd.read_csv('/content/drive/MyDrive/Moje_projekty/bodyfat.csv')
+
+cm=2.54
+kg=2.25
+df['Height_cm'] =(df['Height']*cm).round(2) #round zaokrągla do wskazanej ilości miejsc po przecinku
+df['Weight_kg'] =(df['Weight']/kg).round(1)
+df.drop(['Height','Weight'], axis=1, inplace=True)
+df.rename(columns={'Height_cm':'Height','Weight_kg':'Weight'}, inplace=True) # zmiana kolumny
+df['BMI']=((df['Weight']/df['Height']**2)*10000).round(2)
+df['real_values']=(df['Height']/df['Wrist']).round(2)
+df['WHR']=(df['Abdomen']/df['Hip']).round(2)
+
+conditions=[
+# warunki fizyczne dla ektomorfika
+ (df['BMI']<25) & (df['real_values']>10.1),
+
+# warunki fizyczne dla mezomorfika
+(df['BMI']>=20) & (df['BodyFat']<13)
+]
+
+values=['ektomorfik','mezomorfik']
+
+df['Somatyp']=np.select(conditions,values,default='endomorfik')
+
+
+kolumny = df.columns.tolist() # Pobierz obecną listę kolumn
+kolumny.remove('Height') # Usuń nową kolumnę z końca listy
+kolumny.insert(3,'Height')
+kolumny.remove('Weight')
+kolumny.insert(4,'Weight')
+
+
+wysoki_wzrost = (df['Height'] > 189).sum()
+ektomorfik = (df['Somatyp'] == 'ektomorfik').sum()
+endomorfik = (df['Somatyp'] == 'endomorfik').sum()
+mezomorfik = (df['Somatyp'] == 'mezomorfik').sum()
+Inny= (df['Somatyp']=='Inny').sum()
+
+
+print("ilość wysokich:",wysoki_wzrost)
+
+print("ilość ektomorfików:",ektomorfik)
+print("ilość endomorfików:",endomorfik)
+print("ilość mezomorfików:",mezomorfik)
+
+
+df = df[kolumny]
+
+df_wysoki_wzrost = df[df['Height'] > 189]
+print("Wiersze z wysokością powyżej 189 cm:")
+print(df_wysoki_wzrost)
+
+
+print(df)
+
+plt.figure(figsize=(19,10))
+df.plot(kind="box")
+plt.xticks(rotation=90)
+plt.show()
+
+data=df.to_numpy()
+
+from sklearn.preprocessing import LabelEncoder
+le=LabelEncoder() # zmiana z dyskretnych na liczbę
+
+print(data)
+data_2=le.fit_transform(data[:,-1])
+df['Somatyp']=data_2
+print(data_2)
+print("Somatyp:",df['Somatyp'])
+
+# Podział danych na cechy i osobno decyzję
+y=data[:,-1] # atrybut decyzyjny
+X=data[:,:-1] # pozostałe atrybuty
+print("atrybut decyzyjny:",y)
+
+print(X)
+
+"""## Uczenie i trenowanie algorytmu"""
+
+## Trenuj i testuj
+##Poodział na treningowe i testowe
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.35)
+print("ilość treningowych: ",len(X_train))
+print("ilość testowwych:   ",len(X_test))
+
+"""## Trenowanie i walidacja"""
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, classification_report
+
+clf=DecisionTreeClassifier(max_depth=4)
+clf.fit(X_train,y_train)
+y_pred=clf.predict(X_test)
+print("Przewidywane wartości:",y_pred)
+print("Rzeczywiste wartości:",y_test)
+
+print("Macierz pomyłek:")
+print(confusion_matrix(y_test,y_pred))
+
+print("Czułość:",recall_score(y_test,y_pred, average="macro"))
+print("Precyzja:",precision_score(y_test,y_pred, average="macro"))
+print("Raport klasyfikacji:")
+print(classification_report(y_test,y_pred))
+
+"""## Trenowanie i walidacja dla wielu algorytmów"""
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+
+klasyfikatory = {
+    "DT0"    : DecisionTreeClassifier(),
+    "DT10"    : DecisionTreeClassifier(max_depth=4),
+    "DT10en"  : DecisionTreeClassifier(max_depth=4, criterion="entropy"),
+    "RF"     : RandomForestClassifier(),
+    "RF_4"   : RandomForestClassifier(max_depth=4),
+    "SVM"    : SVC(),
+    "GB"     : GradientBoostingClassifier(),
+    "KNN"    : KNeighborsClassifier(),
+    "NB"     : GaussianNB()
+}
+
+
+best_clf_name = None
+best_clf_val  = 0.0
+
+for name, model in klasyfikatory.items():
+    print("="*40)
+    print(name)
+    print("="*40)
+
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    print(classification_report(y_test, y_pred, zero_division=0))
+    print(confusion_matrix(y_test, y_pred))
+
+    # zgodnie z celem, robimy czułość (recall)
+    recall = recall_score(y_test, y_pred, average=None)[1]
+    print("Wartość dla celu: ", recall)
+
+    if recall > best_clf_val:
+        best_clf_val = recall
+        best_clf_name = name
+
+    print("="*40)
+print()
+print("Wybrany klasyfikator:", best_clf_name)
+clf = klasyfikatory[best_clf_name]
+
+"""## wyuczony klasyfikator"""
+
+print("Liczba w X:", X.shape[1])
+
+new_x1=[1.08,8,37,192,83.5,39,104,87,97,59,41,22.5,34,31,17.5,23.5,10.97,0.9]
+new_x2=[1.08,6,30,191,107,39,125,87,103,67,43,24.5,47,31,19.5,29.33,9.79,0.84]
+result=clf.predict([new_x1,new_x2])
+print(result)
+
+"""## krosowa walidacja"""
+
+from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import make_scorer
+results = pd.DataFrame()
+
+for i in range(1,16):
+    clf = DecisionTreeClassifier(max_depth=i)
+    result = cross_val_score(clf, X, y, cv=4)
+
+    results[i] = result
+print(results)
+
+results.plot(kind="box")
+plt.show()
